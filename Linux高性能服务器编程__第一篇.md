@@ -19,7 +19,7 @@
    - 严格源路由选择，和松散源路由选择类似，不过数据报只能经过被指定的路由器。
 3. route命令可以修改路由表。
 4. 如何使主机可以转发数据包：将/proc/sys/net/ipv4/ip_forward内核参数设置为1。
-5.  /proc/sys/net/ipv4/conf/all/send_redirects 内核参数指定是否允许发送ICMP重定向报文；/proc/sys/net/ipv4/conf/all/accecpt_redireacts内核参数指定是否允许接收ICMP重定向报文。一般来说==主机只能接收ICMP重定向报文，而路由器只能发送ICMP重定向报文==。
+5.  /proc/sys/net/ipv4/conf/all/send_redirects 内核参数指定是否允许发送ICMP重定向报文；/proc/sys/net/ipv4/conf/all/accecpt_redireacts内核参数指定是否允许接收ICMP重定向报文。一般来说`主机只能接收ICMP重定向报文，而路由器只能发送ICMP重定向报文`。
 
 ## 第3章 TCP协议详解
 
@@ -38,9 +38,9 @@
    - kind=5 SACK实际工作的选项。
    - kind=8 时间戳选项。
    
-5. 服务器和客户端应用程序判断对方是否已经关闭连接的方法是：==read系统调用返回 0==。
+5. 服务器和客户端应用程序判断对方是否已经关闭连接的方法是：`read系统调用返回 0`。
 
-   ![](image\图1.jpg)
+   ![](https://github.com/SusanGuo412/Note_HPLSP/tree/main/image/图1.jpg)
 
 6. iptable命令用于过滤数据包，可以用该命令模拟繁忙的服务器环境。
 
@@ -102,4 +102,4 @@
 
 26. HTTP常见状态码
 
-    ![](image\图2.jpg)
+    ![](https://github.com/SusanGuo412/Note_HPLSP/tree/main/image/图2.jpg)
