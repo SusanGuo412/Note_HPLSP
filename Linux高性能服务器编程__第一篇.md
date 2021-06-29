@@ -40,7 +40,7 @@
    
 5. 服务器和客户端应用程序判断对方是否已经关闭连接的方法是：`read系统调用返回 0`。
 
-   ![](https://github.com/SusanGuo412/Note_HPLSP/tree/main/image/图1.jpg)
+   ![](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图1.jpg)
 
 6. iptable命令用于过滤数据包，可以用该命令模拟繁忙的服务器环境。
 
@@ -102,4 +102,4 @@
 
 26. HTTP常见状态码
 
-    ![](https://github.com/SusanGuo412/Note_HPLSP/tree/main/image/图2.jpg)
+    ![](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图2.jpg)
