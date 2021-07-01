@@ -310,7 +310,7 @@ ssize_t send(int sockfd, const void* buf, size_t len, int flags);
 
 flags可取值
 
-![](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图3.jpg)
+![图3](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图3.jpg)
 
 ```c
 //客户端
