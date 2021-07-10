@@ -1067,3 +1067,247 @@ int setnonblocking(int fd)
 ```
 
 此外，SIGIO和SIGURG这两个信号与其他Linux信号不同，他们必须与某个文件描述符相关联方可使用：当被关联的文件描述符可读或可写时，系统将触发SIGIO信号；当被关联的文件描述符(而且必须是一个socket)上有带外数据可读时，系统将触发SIGURG信号。将信号和文件描述符关联的方法，就是使用fcntl函数为目标文件描述符指定宿主进程或进程组，那么被指定的宿主进程或进程组将捕获这两个信号。使用SIGIO时，还需要利用fcntl设置其O_ASYNC标志。
+
+## 第7章 Linux服务器程序规范
+
+- Linux服务器程序一般以后台进程形式运行。后台进程又称守护进程。它没有控制终端，因而也不会以外接收到用户输入。守护进程的父进程通常是init进程。
+- Linux服务器程序通常有一套日志系统。大部分后台进程都在/var/log目录下有自己的日志文件。
+- Linux服务器程序一般以某个专门的非root身份运行。
+- Linux服务器程序通常是可配置的。可以通过配置文件来管理。配置文件一般存放在/etc目录下。
+- Linux服务器进程通常会在启动的时候生成一个PID文件并存入/var/run目录总。
+- Linux服务器程序通常需要考虑系统资源和限制，以预测自身能承受多大符合。
+
+### 7.1 日志
+
+#### 7.1.1 Linux日志系统
+
+![图13](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图13.jpg)
+
+默认情况下，调试信息会保存至/var/log/debug文件，普通信息保存至/var/log/messages文件，内核消息则保存至/var/log/kern.log文件。不过，日志信息具体如何分发，可以在rsyslogd的配置文件中设置。rsyslogd的主配置文件是/etc/rsyslog.conf。
+
+#### 7.1.2 syslog函数
+
+应用程序使用syslog函数与rsyslogd守护进程通信。
+
+```c
+#include<syslog.h>
+/*该函数采用可变参数(第二个，第三个参数)来结构化输出。priority参数是所谓的设施值与日志级别的按位或。设施值得默认值是LOG_USER。*/
+void syslog(int priority, const char* message, ...);
+
+//日志级别
+#include<syslog.h>
+#define LOG_EMERG            0 /*系统不可用*/
+#define LOG_ALERT            1 /*报警，需要立即采取动作*/
+#define LOG_CRIT             2 /*非常严重的情况*/
+#defien LOG_ERR              3 /*错误*/
+#define LOG_WARNING          4 /*警告*/
+#define LOG_NOTICE           5 /*通知*/
+#define LOG_INFO             6 /*信息*/
+#define LOG_DEBUG            7 /*调试*/
+
+#include<syslog.h>
+/*此函数可以改变syslog的默认输出方式，进一步结构化日志内容。ident参数指定的字符串将被添加到日志消息的日期和时间之后，它通常被设置为程序的名字。logpot参数对后续syslog调用的行为进行配置，它可以取下列值的按位或。facility参数可用来修改syslog函数中的默认设施值*/
+void openlog(const char* ident, int logopt, int facility);
+
+//logopt
+#define LOG_PID         0X01 /*在日志消息中包含程序PID*/
+#define LOG_CONS        0X02 /*如果消息不能记录到日志文件，则打印至终端*/
+#define LOG_ODELAY      0X04 /*延迟打开日志功能直到第一次调用syslog*/
+#define LOG_NDELAY      0x08 /*不延迟打开日志功能*/
+```
+
+此外，日志的过滤也很重要。设置日志掩码，`使日志级别大于日志掩码的日志信息被系统忽略`。
+
+```c
+#include<syslog.h>
+/*maskpri参数指定日志掩码值。该函数始终会成功，它返回调用进程先前的日志掩码值*/
+int setlogmask(int maskpri);
+
+#include<syslog.h>
+/*关闭日志功能*/
+void closelog();
+```
+
+### 7.2 用户信息
+
+#### 7.2.1 UID, EUID, GID, EGID
+
+```c
+#include<sys/types.h>
+#include<unistd.h>
+uid_t getuid();
+uid_t geteuid();
+uit_t getgid();
+uit_t getegid();
+int setuid(uid_t uid);
+int seteuid(uid_t uid);
+int setgid(gid_t gid);
+int setgid(gid_t gid);
+```
+
+一个进程有两个用户ID: UID和EUID。EUID存在的目的是方便资源访问：它使得运行程序的用户拥有该程序的有效用户的权限。有效用户为root的进程称为特权进程。
+
+#### 7.2.2 切换用户
+
+```c
+//将root身份启动的进程切换为一个以普通用户身份运行
+static bool switch_to_user( uid_t user_id, gid_t gp_id )
+{
+    if ( ( user_id == 0 ) && ( gp_id == 0 ) )
+    {
+        return false;
+    }
+
+    gid_t gid = getgid();
+    uid_t uid = getuid();
+    if ( ( ( gid != 0 ) || ( uid != 0 ) ) && ( ( gid != gp_id ) || ( uid != user_id ) ) )
+    {
+        return false;
+    }
+
+    if ( uid != 0 )
+    {
+        return true;
+    }
+
+    if ( ( setgid( gp_id ) < 0 ) || ( setuid( user_id ) < 0 ) )
+    {
+        return false;
+    }
+
+    return true;
+}
+```
+
+### 7.3 进程间关系
+
+#### 7.3.1 进程组
+
+Linux下每个进程都隶属于一个进程组，因此它们出了PID信息外，还有进程组ID (PGID) 。
+
+```c
+#include<unistd.h>
+pid_t getpgid(pid_t pid);
+
+#include<unistd.h>
+int setpgid(pid_t pid, pid_t pgid);
+```
+
+每个进程组都有一个首领进程，其PGID和PID相同。如果pid和pgid相同，则由pid指定的进程将被设置为进程组首领；如果pid为0，则表示设置当前进程的PGID为pgid；如果pgid为0，则使用pid作为目标PGID。
+
+`一个进程只能设置自己或其子进程的PGID。并且当子进程调用exec系列函数后，我们也不能再在父进程中对它设置PGID。`
+
+#### 7.3.2 会话
+
+一些有关联的进程组将形成一个会话。
+
+```c
+#include<unistd.h>
+/*创建一个会话。成功返回新的进程组的PGID，*/
+pid_t setsid(void);
+```
+
+该函数不能由进程组的首领进程调用。对于非族首领的进程，调用该函数不仅创建新会话，而且由如下额外效果：
+
+- 调用进程成为会话的首领，此时该进程是新会话的唯一成员。
+- 新建一个进程组，其PGID就是调用进程的PID，调用进程成为该组的首领。
+- 调用进程将甩开终端。
+
+Linux进程并未提供所谓会话ID的概念，但Linux系统认为它等于会话首领所在的进程组的PGID。
+
+```c
+#include<unistd.h>
+pid_t getsid(pid_t pid);
+```
+
+#### 7.3.3 用ps命令查看进程关系
+
+### 7.4 系统资源限制
+
+Linux系统资源限制可以通过如下一对函数来读取和设置。
+
+```c
+#include<sys/resource.h>
+/*成功返回0，失败返回-1并设置errno*/
+int getrlimit(int resource, struct rlimit *rlim);
+int setrlimit(int resource, const struct rlimit *rlim);
+
+/*rlim_t是一个整数类型，它描述资源级别。rlim_cur成员指定资源的软限制，rlim_max成员指定资源的硬限制。*/
+struct rlimit
+{
+    rlim_t rlim_cur;
+    rlim_t rlim_max;
+}
+```
+
+软限制是一个建议性的、最好不要超越的限制，如果超越的话，系统可能向进程发送信号以终止其运行。硬限制一般是软限制的上限。普通程序可以减小应限制，而只有以root身份运行的程序才能增加硬限制。
+
+此外我们可以使用ulimit命令修改当前shell环境下的资源限制；也可以通过修改配置文件来改变系统资源限制。
+
+![图14](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图14.jpg)
+
+### 7.5 改变工作目录和根目录
+
+Web服务器的逻辑根目录并非文件系统的根目录/，而是站点的根目录(一般是/var/www)。
+
+```c
+#include<unistd.h>
+/*获取进程当前工作目录。buf参数指向的内存用于存储进程当前工作目录的绝对路径，其大小由size参数指定。如果当前工作目录的绝对路径长度(加上"\0")超过了size，则getcwd将返回NULL，并设置errno为ERANGE。若buf为NULL并且size非0，则getcwd可能在内部使用malloc动态分配内存，并将进程的当前工作目录存储在其中。此时，我们必须自己来释放getcwd在内部创建的这块内存。getcwd函数成功时返回一个指向目标存储区的指针，失败则返回NULL并设置errno*/
+char* getcwd(char* buf, size_t size);
+/*改变进程工作目录。path指定要切换到的目标目录。成功时返回0，失败时返回-1并设置errno*/
+int chdir(const char* path);
+/*改变进程根目录。chroot并不改变进程的当前工作目录，调用chroot之后，我们仍需要使用chdir(“/”)来将工作目录切换至新的根目录*/
+int chroot(const char* path);
+```
+
+### 7.6 服务程序后台化
+
+```c
+bool daemonize()
+{
+    /*创建子进程，关闭父进程，这样可以使程序在后台运行*/
+    pid_t pid = fork();
+    if ( pid < 0 )
+    {
+        return false;
+    }
+    else if ( pid > 0 )
+    {
+        exit( 0 );                   //关闭父进程
+    }
+    
+    /*设置文件权限掩码。当进程创建新文件(使用open(const char *pathname, int flags, mode_t mode)系统调用)时，文件的权限将是mode&0777*/
+    umask( 0 );  //0代表拥有所有权限，创建文件和目录的最大权限依然是0777
+    
+    /*创建新的会话，设置本进程为进程组的首领*/
+    pid_t sid = setsid();
+    if ( sid < 0 )
+    {
+        return false;
+    }
+    
+    /*切换工作目录*/
+    if ( ( chdir( "/" ) ) < 0 )
+    {
+        /* Log the failure */
+        return false;
+    }
+    
+    /*关闭标准输入设备，标准输出设备和标准错误输出设备*/
+    close( STDIN_FILENO );
+    close( STDOUT_FILENO );
+    close( STDERR_FILENO );
+    
+    /*关闭其他已经打开的文件描述符，代码省略*/
+    /*将标准输入、标准输出和标准错误输出都定向到/dev/null文件*/
+    open( "/dev/null", O_RDONLY );
+    open( "/dev/null", O_RDWR );
+    open( "/dev/null", O_RDWR );
+    return true;
+}
+
+#include<unistd.h>
+/*Linux提供的相同功能的库函数。nochdir参数用于指定是否改变工作目录，如果给它传递0，则工作目录将被设置为"/",否则继续使用当前工作目录。noclose参数为0时，标准输入、标准输出和标准错误输出都被重定向到/dev/null文件，否则依然使用原来的设备。成功时返回0，失败则返回-1并设置errno。*/
+int daemon(int nochdir, int noclose);
+```
+
