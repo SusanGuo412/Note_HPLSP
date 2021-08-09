@@ -683,7 +683,7 @@ int pipe(int fd[2]);
 #include<sys/types.h>
 #include<sys/socket.h>
 /*可以方便的创建双向管道。domain只可以使用AF_UNIX。创建的这一对文件描述符都是即可读又可写的。成功时返回0，失败时返回-1并设置errno*/
-int sockpair(int domain, int type, int protocol, int fd[2]);
+int socketpair(int domain, int type, int protocol, int fd[2]);
 ```
 
 ### 6.2 dup函数和dup2函数
@@ -2615,3 +2615,458 @@ xinetd采用/etc/xinetd.conf主配置文件和/etc/xinetd.d目录下的子配置
 #### 9.8.2 xinetd工作流程
 
 ![图25](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图25.jpg)
+
+## 第10章 信号
+
+信号是由用户、系统或者进程发送给目标进程的信息，以通知目标进程某个状态的改变或系统异常。Linux信号可由如下条件产生：
+
+- 前台进程：用户可以输入特殊的终端字符发送信号。
+- 系统异常。
+- 系统状态变化。
+- 运行kill命令或调用kill函数。
+
+### 10.1 Linux信号概述
+
+#### 10.1.1 发送信号
+
+Linux下，一个进程给其他进程发送信号的API是kill函数。
+
+```c++
+#include<sys/types.h>
+#include<signal.h>
+/*函数把sig发送给目标进程，目标进程由pid参数指定。Linux定义的信号值都大于0，如果sig取0，则kill函数不发送任何信号。但将sig设置为0可以用来检测目标进程或进程组是否存在。
+函数成功时返回0，失败则返回-1并设置errno。*/
+int kill(pid_t pid, int sig);
+```
+
+![图26](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图26.jpg)
+
+![图27](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图27.jpg)
+
+#### 10.1.2 信号处理方式
+
+信号处理函数的原型如下：
+
+```c++
+#include<signal.h>
+/*信号处理函数只带有一个整型参数，该参数用来指示信号类型*/
+typedef void(*__sighandler_t) (int);
+```
+
+信号处理函数应该是可重入的，否则容易引发一些竞态条件。
+
+除了用户自定义信号处理函数外，bits/signum.h中海定义了信号的两种其他处理方式。
+
+```c++
+#include<bits/signum.h>
+/*使用信号的默认处理方式*/
+#define SIG_DFL ((__sighandler_t) 0)
+/*忽略目标信号*/
+#define SIG_IGN ((__sighandler_t) 1)
+```
+
+信号的默认处理方式由以下几种：结束进程(Term)，忽略信号(Ign),结束进程并生成核心转储文件(Core), 暂停进程(Stop), 继续进程(Cont)。
+
+#### 10.1.3 Linux信号
+
+Linux的可用信号都定义在bits/signum.h头文件中。
+
+![图28](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图28.jpg)
+
+![图29](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图29.jpg)
+
+#### 10.1.4 中断系统调用
+
+如果程序在执行处于阻塞状态的系统调用时接收到信号，并且我们为该信号设置了信号处理函数，则默认情况下系统调用将被中断，并且errno被设置为 EINTR。我们可以使用sigaction函数为信号设置SA_RESTART标志以自动重启该被信号中断的系统调用。
+
+对于默认行为时暂停进程的信号（如：SIGSTOP，SIGTTIN），如果我们没有为它们设置信号处理函数，则它们也可以中断默些系统调用。（如：sonnect, epoll_wait）。
+
+### 10.2 信号函数
+
+#### 10.2.1 signal系统调用
+
+要为一个信号设置处理函数，可以使用下main的signal系统调用。
+
+```c++
+#include<signal.h>
+/*
+sig参数指出要捕获的信号类型，_handler参数是_sighandler_t类型的函数指针，用于指定信号sig的处理函数。
+signal函数成功时返回一个函数指针，这个返回值是前一次调用signal函数时传入的函数指针，或者是信号sig对应的默认处理函数指针SIG_DEF(如果是第一次调用signal的话)
+signal系统调用出错时返回SIG_ERR,并设置errno。
+*/
+_sighandler_t signal(int sig, _sighandler_t _handler);
+```
+
+#### 10.2.2 sigaction系统调用
+
+```c++
+#include<signal.h>
+/*sig参数指出要捕获的信号类型，act参数指定新的信号处理方式，oact参数输出信号先前的处理方式*/
+int sigaction(int sig, const struct sigaction* act, struct sigaction* oact);
+
+/*
+sa_handler成员指定信号处理函数，sa_mask成员设置进程的信号掩码，以指定哪些信号不能发送给本进程。sa_flags成员用于设置程序收到信号时的行为，可选值如下表所示。sa_restorer成员已经过时，最好不要使用。
+sigaction成功时返回0，失败则返回-1并设置errno。
+*/
+struct sigaction
+{
+#ifdef __USE_POSIX199309
+    union
+    {
+        _sighandler_t sa_handler;
+        void (*sa_sigaction) (int, siginfor_t*, void*);
+	}
+    _sigaction_handler;
+#define sa_handler __sigaction_handler.sa_handler
+#define sa_sigaction __sigaction_handler.sa_sigaction
+#else
+    _sigset_t sa_mask;
+    int sa_flags;
+    void (*sa_restorer) (void);
+};
+```
+
+![图30](https://github.com/SusanGuo412/Note_HPLSP/raw/main/image/图30.jpg)
+
+### 10.3 信号集
+
+#### 10.3.1 信号集函数
+
+sigset_t实际上时一个长整型数组，数组的每个元素的每个位标识一个信号。Linux提供了如下一组函数来设置、修改、删除和查询信号集。
+
+```c++
+#include<signal.h>
+int sigemptyset(sigset_t *_set);  //清空信号集
+int sigfillset(sigset_t *_set);   //在信号集中设置所有信号
+int sigaddset(sigset_t *_set, int _signo);  //将信号_signo添加至信号集中
+int sigdelset(sigset_t *_set, int _signo);  //将信号_signo从信号集中删除
+int sigismember(_const sigset_t *_set, int _signo)  //测试_signo是否在信号集中
+```
+
+#### 10.3.2 进程信号掩码
+
+```c++
+#include<signal.h>
+/*
+用于设置或查看进程的信号掩码
+_set参数指定新的信号掩码，_oset参数输出原来的信号掩码。若_set参数不为NULL，则_how参数设置进程信号掩码方式。若_set为NULL,则进程信号掩码不变，我们仍可以利用_oset参数来获得进程当前的信号掩码。
+sigpromask成功时返回0，失败时返回-1并设置errno。
+*/
+int sigprocmask(int _how, _const sigset_t* _set, sigset_t *_oset);
+```
+
+#### 10.3.3 被挂起的信号
+
+设置进程信号掩码后，被屏蔽的信号将不能被进程接收。如果给进程发送一个被屏蔽的信号，则OS将该信号设置为进程的一个被挂起的信号。如果取消对被挂起信号的屏蔽，则它能立即被进程接收到。
+
+```c++
+#include<signal.h>
+/*
+获得进程当前被挂起的信号集
+set参数用于保存被挂起的信号集。进程即使多次接收到同一个被挂起的信号，sigpending函数也只能反映一次。并且当我们再次使用sigprocmask使能该挂起的信号时，该信号的处理函数也只被触发一次。
+sigpending成功时返回0，失败时返回-1并设置errno。
+*/
+int sigpending(sigset_t *set);
+```
+
+### 10.4 统一事件源
+
+信号是一种异步事件。
+
+把信号的主要处理逻辑放到程序的主循环中，当信号处理函数被触发时，它只是简单通知主循环程序接收到信号，并把信号值传递给主循环，主循环再根据接收到的信号值执行目标信号对应的逻辑代码。信号处理函数通常使用管道来讲信号传递给主循环，主循环使用I/O复用系统调用来监听管道读端文件描述符上的可读事件。如此一来，信号事件就能和其他I/O事件一样被处理，即`统一事件源`。
+
+```c++
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<errno.h>
+#include<arpa/inet.h>
+#include<sys/socket.h>
+#include<assert.h>
+#include<sys/epoll.h>
+#include<fcntl.h>
+#include<pthread.h>
+#include<fcntl.h>
+#include<sys/types.h>
+#include<unistd.h>
+#include<signal.h>
+
+#define MAX_EVENT_NUMBER 1024
+#define BUFFER_SIZE 1024
+
+static int pipefd[2];
+
+int setnonblocking(int fd)
+{
+	int old_option=fcntl(fd, F_GETFL);
+	int new_option=old_option|O_NONBLOCK;
+	fcntl(fd, F_SETFL, new_option);
+	return old_option;
+}
+
+void addfd(int epollfd, int fd)
+{
+	epoll_event event;
+	event.data.fd=fd;
+	event.events=EPOLLIN|EPOLLET;
+	epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
+	setnonblocking(fd);
+}
+
+void sig_handler(int sig)
+{
+	int old_errno=errno;
+	int msg = sig;
+	send(pipefd[1], (char*)&msg, 1, 0);
+	errno = old_errno;
+}
+
+void addsig(int sig)
+{
+	struct sigaction sa;
+	memset(&sa, '\0', sizeof(sa));
+	sa.sa_handler = sig_handler;
+	sa.sa_flags |= SA_RESTART;
+	sigfillset(&sa.sa_mask);
+	assert(sigaction(sig, &sa, NULL)!=-1);
+	
+}
+
+int main(int argc, char* argv[])
+{
+	if(argc<=2)
+	{
+		printf("the parameter are ip and port \n");
+		return 1;
+	}
+	
+	const char* ip=argv[1];
+	int port=atoi(argv[2]);
+
+	bool server_stop = false;
+
+	struct sockaddr_in servaddr;
+	bzero(&servaddr, sizeof(servaddr));
+	servaddr.sin_family=AF_INET;
+	servaddr.sin_port=htons(port);
+	inet_pton(AF_INET, ip, &servaddr.sin_addr);
+
+	int listenfd=socket(PF_INET, SOCK_STREAM, 0);
+	assert(listenfd>=0);
+	
+	int ret=bind(listenfd, (const struct sockaddr*)&servaddr, sizeof(servaddr));
+	assert(ret!=-1);
+	
+	ret=listen(listenfd, 5);
+	assert(ret!=-1);
+
+	epoll_event events[MAX_EVENT_NUMBER];
+	int epollfd=epoll_create(5);
+	assert(epollfd!=-1);
+	addfd(epollfd, listenfd);
+
+	ret=socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
+	assert(ret != -1);
+	setnonblocking(pipefd[1]);
+	addfd(epollfd, pipefd[0]);
+
+	addsig(SIGHUP);
+	addsig(SIGCHLD);
+	addsig(SIGTERM);
+	addsig(SIGINT);
+
+
+	
+	while(!server_stop)
+	{
+		ret=epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
+		if((ret<0) && (errno != EINTR))
+		{
+			printf("something wrong happened \n");
+			break;
+		}
+		else
+		{
+			for(int i=0; i<MAX_EVENT_NUMBER; ++i)
+			{
+				int sockfd=events[i].data.fd;
+				if(sockfd==listenfd)
+				{
+					struct sockaddr_in clientaddr;
+					socklen_t addrlength=sizeof(clientaddr);
+					int connfd=accept(listenfd, (struct sockaddr*) &clientaddr, &addrlength);
+					addfd(epollfd, connfd);
+				}
+				else if(sockfd==pipefd[0] & events[i].events==EPOLLIN)
+				{
+					int sig;
+					char signals[1024];
+					//每个信号值占1字节，按照字节来逐个接收信号
+					ret = recv(sockfd, signals, sizeof(signals), 0);
+					if (ret == -1)
+					{
+						continue;
+					}
+					else if (ret == 0)
+					{
+						continue;
+					}
+					else
+					{
+						for (int i = 0; i < ret; i++)
+						{
+							switch(signals[i])
+							{
+								case SIGCHLD:
+								case SIGHUP:
+									continue;
+								case SIGTERM:
+								case SIGINT:
+									server_stop = true;
+					
+							}
+						}
+					}
+				}
+				else
+				{
+					printf("something wrong happened \n");
+				}
+			}
+		}
+	}
+	close(listenfd);
+	close(pipefd[1]);
+	close(pipefd[0]);
+	return 0;
+}
+```
+
+### 10.5 网络编程相关信号
+
+#### 10.5.1 SIGUP
+
+当挂起进程和控制终端时，SIGHUP信号将被触发。对于没有控制终端的网络后台程序而言，它们通常利用SIGHUP信号来强制服务器重读配置文件。一个典型的例子是xinetd超级服务程序。
+
+#### 10.5.2 SIGPIPE
+
+默认情况下，往一个读端关闭的管道或socket连接中写数据将引发SIGPIPE信号。我们需要再代码中捕获并处理该信号，或者至少忽略它，因为程序接收到SIGPIPE信号的默认行为是结束进程，而我们绝对不希望因为错误的写操作而导致程序退出。引起SIGPIPE信号的写操作将设置errno为PIPE。
+
+- 可以使用send函数的MSG_NONSIGNAL标志来禁止写操作触发SIGPIPE信号。在此情况下，我们应该使用send函数反馈的errno值来判断管道或者socket连接的读端是否已经关闭。
+- 可以利用I/O复用系统调用来检测管道和socket连接的读端是否已经关闭。以poll为例，当管道的读端关闭时，写端文件描述符上的POLLHUP事件将被触发；当socket连接被对方关闭时，socket上的POLLRDHUP事件将被触发。
+
+#### 10.5.3 SIGURG
+
+Linux环境下，内核通知应用程序带外数据到达主要有两种方法。
+
+- I/O复用技术，select等系统调用在接收到带外数据时将返回，并向应用程序报告socket上的异常事件。
+- SIGURG信号。
+
+```c++
+//使用5-8的客户端程序发送数据无法接收到带外数据，在每次发送数据后sleep(1)可以接收到带外数据，但会接收顺序发生改变
+/*
+3 bytes normal 123
+1 bytes oob c
+2 bytes normal ab
+3 bytes normal 123
+*/
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<errno.h>
+#include<arpa/inet.h>
+#include<sys/socket.h>
+#include<assert.h>
+#include<sys/epoll.h>
+#include<fcntl.h>
+#include<pthread.h>
+#include<fcntl.h>
+#include<sys/types.h>
+#include<unistd.h>
+#include<signal.h>
+
+#define MAX_EVENT_NUMBER 1024
+#define BUFFER_SIZE 1024
+
+static int connfd;
+
+void sig_urg(int sig)
+{
+	int old_errno=errno;
+	char buf[BUFFER_SIZE];
+	memset(buf, '\0', BUFFER_SIZE);
+	int ret = recv(connfd, buf, BUFFER_SIZE - 1, MSG_OOB);
+	printf("get %d bytes of oob data %s\n", ret, buf);
+	errno = old_errno;
+}
+
+void addsig(int sig,void(*sig_handler)(int))
+{
+	struct sigaction sa;
+	memset(&sa, '\0', sizeof(sa));
+	sa.sa_handler = sig_handler;
+	sa.sa_flags |= SA_RESTART;
+	sigfillset(&sa.sa_mask);
+	assert(sigaction(sig, &sa, NULL)!=-1);
+}
+
+int main(int argc, char* argv[])
+{
+	if(argc<=2)
+	{
+		printf("the parameter are ip and port \n");
+		return 1;
+	}
+	
+	const char* ip=argv[1];
+	int port=atoi(argv[2]);
+
+	bool server_stop = false;
+
+	struct sockaddr_in servaddr;
+	bzero(&servaddr, sizeof(servaddr));
+	servaddr.sin_family=AF_INET;
+	servaddr.sin_port=htons(port);
+	inet_pton(AF_INET, ip, &servaddr.sin_addr);
+
+	int listenfd=socket(PF_INET, SOCK_STREAM, 0);
+	assert(listenfd>=0);
+	
+	int ret=bind(listenfd, (const struct sockaddr*)&servaddr, sizeof(servaddr));
+	assert(ret!=-1);
+	
+	ret=listen(listenfd, 5);
+	assert(ret!=-1);
+
+	struct sockaddr_in clientaddr;
+	socklen_t len = sizeof(servaddr);
+	connfd = accept(listenfd, (struct sockaddr*)&clientaddr, &len);
+	if (connfd < 0)
+	{
+		printf("errno is %d\n", errno);
+	}
+	else
+	{
+		addsig(SIGURG, sig_urg);
+		fcntl(connfd, F_SETOWN, getpid());
+
+		char buf[BUFFER_SIZE];
+		while (1)
+		{
+			memset(buf, '\0', BUFFER_SIZE);
+			ret = recv(connfd, buf, BUFFER_SIZE - 1, 0);
+			if (ret > 0)
+			{
+				printf("get %d bytes of normal data %s\n", ret, buf);
+			}
+			else
+				break;
+		}
+		close(connfd);
+	}
+	close(listenfd);
+	return 0;
+}
+```
+
+应用程序检测到带外数据到达后，我们还需要进一步判断带外数据在数据流中的具体位置，才能准确无误地读取带外数据。5.9节介绍的sockatmark系统调用就是专门用于解决这个问题的。它判断一个socket是否处于带外标记。即该socket上下一个将被读取到的数据是否是带外数据。
